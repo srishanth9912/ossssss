@@ -144,11 +144,14 @@ For a background pipeline, all child processes are placed in one process group. 
 
 | Command | What it does | Example |
 | --- | --- | --- |
-| `notes add <text>` | Saves a study note in `~/.studentos/notes.db`. | `notes add "Revise pipes"` |
+| `notes add` | Prompts for the note text and saves it in `~/.studentos/notes.db`. | Type `notes add`, then enter the note when prompted. |
+| `notes add <text>` | Saves a study note using one command line. | `notes add "Revise pipes"` |
 | `notes list` / `notes clear` | Lists or clears notes. | `notes list` |
-| `assignment add <text> [--due DATE]` | Saves an assignment with an optional due date. | `assignment add "Shell report" --due 30-09-2026` |
+| `assignment add` | Prompts separately for the title and optional due date. | Type `assignment add`, then answer both prompts. |
+| `assignment add <text> [--due DATE]` | Saves an assignment using one command line. | `assignment add "Shell report" --due 30-09-2026` |
 | `assignment list`, `assignment done <id>`, `assignment clear` | Manages saved assignments. | `assignment done 1` |
-| `timetable add <day> <time> <subject>` | Adds a timetable entry. | `timetable add Monday 09:00 "Operating Systems"` |
+| `timetable add` | Prompts separately for day, time, and subject. | Type `timetable add`, then answer all three prompts. |
+| `timetable add <day> <time> <subject>` | Adds a timetable entry using one command line. | `timetable add Monday 09:00 "Operating Systems"` |
 | `timetable list` / `timetable clear` | Lists or clears the timetable. | `timetable list` |
 | `calculator <expression>` | Evaluates `+`, `-`, `*`, `/`, and parentheses. | `calculator (20 + 5) * 4` |
 | `compile <file.c> [output]` | Compiles a C file with GCC through `fork()` and `execvp()`. | `compile tests/hello.c hello` |

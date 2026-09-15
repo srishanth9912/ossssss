@@ -1,5 +1,6 @@
 /* Thread-safe process-group based background job control. */
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>

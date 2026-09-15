@@ -82,15 +82,27 @@ run_test "Student Utility: notes add & list (no 'n' bug)" \
     "notes clear\nnotes add \"Study process scheduling in Unix\"\nnotes list" \
     "Study process scheduling in Unix"
 
+run_test "Student Utility: interactive notes entry" \
+    "notes clear\nnotes add\nStudy process scheduling interactively\nnotes list" \
+    "Study process scheduling interactively"
+
 # Test 8: Assignment utility
 run_test "Student Utility: assignment add & list" \
     "assignment clear\nassignment add \"Shell Project\" --due 30-09-2026\nassignment list" \
     "Shell Project"
 
+run_test "Student Utility: interactive assignment entry" \
+    "assignment clear\nassignment add\nShell Project Interactive\n15-10-2026\nassignment list" \
+    "Shell Project Interactive"
+
 # Test 9: Timetable utility
 run_test "Student Utility: timetable add & list" \
     "timetable clear\ntimetable add Monday 09:00 \"Operating Systems\"\ntimetable list" \
     "Operating Systems"
+
+run_test "Student Utility: interactive timetable entry" \
+    "timetable clear\ntimetable add\nTuesday\n10:30\nOperating Systems Lab\ntimetable list" \
+    "Operating Systems Lab"
 
 # Test 10: Calculator utility
 run_test "Student Utility: calculator arithmetic" \

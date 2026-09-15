@@ -59,7 +59,7 @@ static void handle_notes(char **args, int argc) {
         char note_text[1024] = "";
 
         if (argc < 3) {
-            /* Interactive step-by-step prompt */
+            printf("Usage: notes add [text] | list | clear\n");
             printf("Note : ");
             fflush(stdout);
             if (!fgets(note_text, sizeof(note_text), stdin)) return;
@@ -124,7 +124,7 @@ static void handle_assignments(char **args, int argc) {
         char due[64] = "No deadline";
 
         if (argc < 3) {
-            /* Interactive step-by-step prompt */
+            printf("Usage: assignment add [title] [--due DD-MM-YYYY] | list | done <id> | clear\n");
             printf("Title    : ");
             fflush(stdout);
             if (!fgets(title, sizeof(title), stdin)) return;
@@ -212,7 +212,7 @@ static void handle_assignments(char **args, int argc) {
     } else if (strcmp(args[1], "done") == 0) {
         int target_id = 0;
         if (argc < 3) {
-            printf("Assignment ID to mark done : ");
+            printf("Usage: timetable add [day] [time] [subject] | list | clear\n");
             fflush(stdout);
             char id_buf[32];
             if (!fgets(id_buf, sizeof(id_buf), stdin)) return;
