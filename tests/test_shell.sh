@@ -68,39 +68,53 @@ run_test "Tokenizer: space preservation inside quotes" \
     "echo \"hello      spaces\"" \
     "hello      spaces"
 
-# Test 6: Notes utility without 'n' corruption
+# Test 6: Syntax errors must not be treated as commands
+run_test "Parser: reject unmatched quotes" \
+    "echo \"unterminated" \
+    "unmatched quote"
+
+run_test "Parser: reject redirection without a file" \
+    "echo hello >" \
+    "redirection requires a file name"
+
+# Test 7: Notes utility without 'n' corruption
 run_test "Student Utility: notes add & list (no 'n' bug)" \
     "notes clear\nnotes add \"Study process scheduling in Unix\"\nnotes list" \
     "Study process scheduling in Unix"
 
-# Test 7: Assignment utility
+# Test 8: Assignment utility
 run_test "Student Utility: assignment add & list" \
     "assignment clear\nassignment add \"Shell Project\" --due 30-09-2026\nassignment list" \
     "Shell Project"
 
-# Test 8: Timetable utility
+# Test 9: Timetable utility
 run_test "Student Utility: timetable add & list" \
     "timetable clear\ntimetable add Monday 09:00 \"Operating Systems\"\ntimetable list" \
     "Operating Systems"
 
-# Test 9: Calculator utility
+# Test 10: Calculator utility
 run_test "Student Utility: calculator arithmetic" \
     "calculator (20 + 5) * 4" \
     "Result     : 100"
 
-# Test 10: Virtual Memory stat (memstat)
+# Test 11: Virtual Memory stat (memstat)
 run_test "System Utility: memstat procfs inspection" \
     "memstat" \
     "Virtual Memory Statistics (memstat)"
 
-# Test 11: System Info (sysinfo)
+# Test 12: System Info (sysinfo)
 run_test "System Utility: sysinfo uname inspection" \
     "sysinfo" \
     "StudentOS System Information"
 
-# Test 12: Background jobs
+# Test 13: Background jobs
 run_test "Job Control: background process launch" \
     "sleep 0.1 &" \
+    "[1]"
+
+# Test 14: a background pipeline is one job
+run_test "Job Control: background pipeline launch" \
+    "printf pipeline | cat &" \
     "[1]"
 
 echo "=================================================="
@@ -112,4 +126,3 @@ if [ "$FAILED" -eq 0 ]; then
 else
     exit 1
 fi
-

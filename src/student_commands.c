@@ -8,8 +8,25 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "student_commands.h"
+
+/* Run a program without invoking a second shell. This keeps arguments literal. */
+static int run_program(char *const argv[]) {
+    pid_t pid = fork();
+    if (pid < 0) { perror("fork"); return 1; }
+    if (pid == 0) {
+        execvp(argv[0], argv);
+        perror(argv[0]);
+        _exit(127);
+    }
+    int status;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) { perror("waitpid"); return 1; }
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+}
 
 /*
  * Helper: Resolve persistent data path in ~/.studentos/
@@ -489,26 +506,23 @@ static void handle_compiler(char **args, int argc) {
         }
 
         printf("Compiling %s -> %s ...\n", src, out);
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "gcc -Wall -Wextra -g %s -o %s", src, out);
-        int rc = system(cmd);
+        char *compile_args[] = {"gcc", "-Wall", "-Wextra", "-g", (char *)src, "-o", out, NULL};
+        int rc = run_program(compile_args);
         if (rc == 0) printf("Compilation successful: ./%s\n", out);
         else printf("Compilation failed with code %d\n", rc);
     } else if (strcmp(action, "run") == 0) {
-        char cmd[1024] = "";
         if (argc < 2) {
+            char cmd[1024] = "";
             printf("Program to run : ");
             fflush(stdout);
             if (!fgets(cmd, sizeof(cmd), stdin)) return;
             cmd[strcspn(cmd, "\r\n")] = '\0';
             if (strlen(cmd) == 0) return;
+            char *run_args[] = {cmd, NULL};
+            (void)run_program(run_args);
         } else {
-            for (int i = 1; i < argc; i++) {
-                if (i > 1) strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
-                strncat(cmd, args[i], sizeof(cmd) - strlen(cmd) - 1);
-            }
+            (void)run_program(&args[1]);
         }
-        system(cmd);
     } else if (strcmp(action, "test") == 0) {
         char src_buf[256] = "";
         const char *src = NULL;
@@ -524,9 +538,12 @@ static void handle_compiler(char **args, int argc) {
         }
         char tmp_bin[256];
         snprintf(tmp_bin, sizeof(tmp_bin), "/tmp/__test_%d", getpid());
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "gcc -Wall -Wextra %s -o %s && %s", src, tmp_bin, tmp_bin);
-        int rc = system(cmd);
+        char *compile_args[] = {"gcc", "-Wall", "-Wextra", (char *)src, "-o", tmp_bin, NULL};
+        int rc = run_program(compile_args);
+        if (rc == 0) {
+            char *test_args[] = {tmp_bin, NULL};
+            rc = run_program(test_args);
+        }
         unlink(tmp_bin);
         printf("\nTest process exited with status %d\n", rc);
     }

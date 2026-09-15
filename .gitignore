@@ -1,0 +1,10 @@
+# Build output
+studentos
+obj/
+
+# Local runtime data
+data/*.db
+data/*.tmp
+
+# Test output
+tests/__studentos_test__

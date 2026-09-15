@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <termios.h>
+#include <signal.h>
 
 #include "vector.h"
 #include "student_string.h"
@@ -70,7 +71,7 @@ static StringVector *tokenize_input(const char *input) {
             if (c == quote) {
                 quote = '\0';
             } else {
-                string_append_c(cur, c);
+                if (string_append_c(cur, c) != 0) goto oom;
             }
             continue;
         }
@@ -84,7 +85,7 @@ static StringVector *tokenize_input(const char *input) {
         /* Whitespace separator */
         if (c == ' ' || c == '\t') {
             if (cur->length > 0) {
-                vector_push(tokens, cur->data);
+                if (vector_push(tokens, cur->data) != 0) goto oom;
                 string_free(cur);
                 cur = string_create();
             }
@@ -94,11 +95,12 @@ static StringVector *tokenize_input(const char *input) {
         /* Multi-character operator: 2>&1 */
         if (c == '2' && input[i + 1] == '>' && input[i + 2] == '&' && input[i + 3] == '1') {
             if (cur->length > 0) {
-                vector_push(tokens, cur->data);
+                if (vector_push(tokens, cur->data) != 0) goto oom;
                 string_free(cur);
                 cur = string_create();
+                if (!cur) goto oom;
             }
-            vector_push(tokens, "2>&1");
+            if (vector_push(tokens, "2>&1") != 0) goto oom;
             i += 3;
             continue;
         }
@@ -106,11 +108,12 @@ static StringVector *tokenize_input(const char *input) {
         /* Multi-character operator: 2> */
         if (c == '2' && input[i + 1] == '>') {
             if (cur->length > 0) {
-                vector_push(tokens, cur->data);
+                if (vector_push(tokens, cur->data) != 0) goto oom;
                 string_free(cur);
                 cur = string_create();
+                if (!cur) goto oom;
             }
-            vector_push(tokens, "2>");
+            if (vector_push(tokens, "2>") != 0) goto oom;
             i += 1;
             continue;
         }
@@ -118,11 +121,12 @@ static StringVector *tokenize_input(const char *input) {
         /* Multi-character operator: >> */
         if (c == '>' && input[i + 1] == '>') {
             if (cur->length > 0) {
-                vector_push(tokens, cur->data);
+                if (vector_push(tokens, cur->data) != 0) goto oom;
                 string_free(cur);
                 cur = string_create();
+                if (!cur) goto oom;
             }
-            vector_push(tokens, ">>");
+            if (vector_push(tokens, ">>") != 0) goto oom;
             i += 1;
             continue;
         }
@@ -130,24 +134,31 @@ static StringVector *tokenize_input(const char *input) {
         /* Single-character operators: |, <, >, & */
         if (c == '|' || c == '<' || c == '>' || c == '&') {
             if (cur->length > 0) {
-                vector_push(tokens, cur->data);
+                if (vector_push(tokens, cur->data) != 0) goto oom;
                 string_free(cur);
                 cur = string_create();
+                if (!cur) goto oom;
             }
             char op[2] = {c, '\0'};
-            vector_push(tokens, op);
+            if (vector_push(tokens, op) != 0) goto oom;
             continue;
         }
 
-        string_append_c(cur, c);
+        if (string_append_c(cur, c) != 0) goto oom;
     }
 
     if (cur->length > 0) {
-        vector_push(tokens, cur->data);
+        if (vector_push(tokens, cur->data) != 0) goto oom;
     }
     string_free(cur);
-
+    if (quote != '\0') { fprintf(stderr, "studentos: unmatched quote\n"); vector_free(tokens); return NULL; }
     return tokens;
+
+oom:
+    fprintf(stderr, "studentos: out of memory\n");
+    string_free(cur);
+    vector_free(tokens);
+    return NULL;
 }
 
 /*
@@ -281,7 +292,7 @@ static int setup_redirection(const ParsedCommand *cmd) {
             perror(cmd->input_file);
             return -1;
         }
-        dup2(fd, STDIN_FILENO);
+        if (dup2(fd, STDIN_FILENO) < 0) { perror("dup2"); close(fd); return -1; }
         close(fd);
     }
 
@@ -292,7 +303,7 @@ static int setup_redirection(const ParsedCommand *cmd) {
             perror(cmd->output_file);
             return -1;
         }
-        dup2(fd, STDOUT_FILENO);
+        if (dup2(fd, STDOUT_FILENO) < 0) { perror("dup2"); close(fd); return -1; }
         close(fd);
     }
 
@@ -302,12 +313,12 @@ static int setup_redirection(const ParsedCommand *cmd) {
             perror(cmd->error_file);
             return -1;
         }
-        dup2(fd, STDERR_FILENO);
+        if (dup2(fd, STDERR_FILENO) < 0) { perror("dup2"); close(fd); return -1; }
         close(fd);
     }
 
     if (cmd->redirect_error_to_stdout) {
-        dup2(STDOUT_FILENO, STDERR_FILENO);
+        if (dup2(STDOUT_FILENO, STDERR_FILENO) < 0) { perror("dup2"); return -1; }
     }
 
     return 0;
@@ -321,7 +332,7 @@ int main(void) {
 
     /* Initialize signal handling and background job monitor */
     setup_signals();
-    jobs_init();
+    if (jobs_init() != 0) return EXIT_FAILURE;
 
     printf("=================================\n");
     printf("        Welcome to StudentOS\n");
@@ -379,6 +390,13 @@ int main(void) {
         int cur_cmd = 0;
         StringVector *arg_builder = vector_create();
         int parse_error = 0;
+        if (!cmds || !arg_builder) {
+            fprintf(stderr, "studentos: out of memory\n");
+            vector_free(arg_builder);
+            vector_free(tokens);
+            free(cmds);
+            continue;
+        }
 
         for (size_t i = 0; i < token_count; i++) {
             const char *t = tokens->items[i];
@@ -390,10 +408,13 @@ int main(void) {
                     break;
                 }
                 cmds[cur_cmd].argc = arg_builder->size;
-                cmds[cur_cmd].argv = malloc((cmds[cur_cmd].argc + 1) * sizeof(char *));
+                cmds[cur_cmd].argv = calloc((cmds[cur_cmd].argc + 1), sizeof(char *));
+                if (!cmds[cur_cmd].argv) { parse_error = 1; break; }
                 for (size_t j = 0; j < arg_builder->size; j++) {
                     cmds[cur_cmd].argv[j] = strdup(arg_builder->items[j]);
+                    if (!cmds[cur_cmd].argv[j]) { parse_error = 1; break; }
                 }
+                if (parse_error) break;
                 cmds[cur_cmd].argv[cmds[cur_cmd].argc] = NULL;
 
                 vector_free(arg_builder);
@@ -402,21 +423,26 @@ int main(void) {
                 continue;
             }
 
-            if (strcmp(t, "<") == 0 && i + 1 < token_count) {
+            if ((strcmp(t, "<") == 0 || strcmp(t, ">") == 0 || strcmp(t, ">>") == 0 || strcmp(t, "2>") == 0) && i + 1 >= token_count) {
+                fprintf(stderr, "studentos: redirection requires a file name\n");
+                parse_error = 1;
+                break;
+            }
+            if (strcmp(t, "<") == 0) {
                 cmds[cur_cmd].input_file = strdup(tokens->items[++i]);
                 continue;
             }
-            if (strcmp(t, ">") == 0 && i + 1 < token_count) {
+            if (strcmp(t, ">") == 0) {
                 cmds[cur_cmd].output_file = strdup(tokens->items[++i]);
                 cmds[cur_cmd].append_output = 0;
                 continue;
             }
-            if (strcmp(t, ">>") == 0 && i + 1 < token_count) {
+            if (strcmp(t, ">>") == 0) {
                 cmds[cur_cmd].output_file = strdup(tokens->items[++i]);
                 cmds[cur_cmd].append_output = 1;
                 continue;
             }
-            if (strcmp(t, "2>") == 0 && i + 1 < token_count) {
+            if (strcmp(t, "2>") == 0) {
                 cmds[cur_cmd].error_file = strdup(tokens->items[++i]);
                 continue;
             }
@@ -430,11 +456,17 @@ int main(void) {
 
         if (!parse_error && arg_builder->size > 0) {
             cmds[cur_cmd].argc = arg_builder->size;
-            cmds[cur_cmd].argv = malloc((cmds[cur_cmd].argc + 1) * sizeof(char *));
-            for (size_t j = 0; j < arg_builder->size; j++) {
-                cmds[cur_cmd].argv[j] = strdup(arg_builder->items[j]);
+            cmds[cur_cmd].argv = calloc((cmds[cur_cmd].argc + 1), sizeof(char *));
+            if (!cmds[cur_cmd].argv) {
+                parse_error = 1;
             }
-            cmds[cur_cmd].argv[cmds[cur_cmd].argc] = NULL;
+            for (size_t j = 0; j < arg_builder->size; j++) {
+                if (!parse_error) {
+                    cmds[cur_cmd].argv[j] = strdup(arg_builder->items[j]);
+                    if (!cmds[cur_cmd].argv[j]) parse_error = 1;
+                }
+            }
+            if (!parse_error) cmds[cur_cmd].argv[cmds[cur_cmd].argc] = NULL;
         } else if (arg_builder->size == 0 && !parse_error) {
             printf("Error: empty command in pipeline\n");
             parse_error = 1;
@@ -481,18 +513,37 @@ int main(void) {
          */
         int pipe_count = cmd_count - 1;
         int *pipefds = NULL;
+        int pipe_error = 0;
         if (pipe_count > 0) {
             pipefds = malloc(2 * pipe_count * sizeof(int));
-            for (int i = 0; i < pipe_count; i++) {
+            if (!pipefds) pipe_error = 1;
+            for (int i = 0; !pipe_error && i < pipe_count; i++) {
                 if (pipe(pipefds + i * 2) < 0) {
                     perror("pipe");
+                    for (int j = 0; j < i * 2; ++j) close(pipefds[j]);
+                    free(pipefds);
+                    pipefds = NULL;
+                    pipe_error = 1;
                     break;
                 }
             }
         }
 
+        if (pipe_error) {
+            fprintf(stderr, "studentos: cannot create pipeline\n");
+            free_commands(cmds, cmd_count);
+            continue;
+        }
+
         pid_t *pids = malloc(cmd_count * sizeof(pid_t));
+        if (!pids) {
+            fprintf(stderr, "studentos: out of memory\n");
+            if (pipefds) { for (int j = 0; j < 2 * pipe_count; ++j) close(pipefds[j]); free(pipefds); }
+            free_commands(cmds, cmd_count);
+            continue;
+        }
         pid_t pgid = 0;
+        int started = 0;
 
         for (int i = 0; i < cmd_count; i++) {
             pid_t pid = fork();
@@ -546,6 +597,7 @@ int main(void) {
             if (pgid == 0) pgid = pid;
             setpgid(pid, pgid);
             pids[i] = pid;
+            started++;
         }
 
         /* Parent closes all pipe ends */
@@ -554,9 +606,16 @@ int main(void) {
             free(pipefds);
         }
 
-        if (is_background) {
-            jobs_add(pids[0], pgid, input);
-            g_last_exit_code = 0;
+        if (started != cmd_count) {
+            if (pgid > 0) kill(-pgid, SIGTERM);
+            for (int i = 0; i < started; ++i) waitpid(pids[i], NULL, 0);
+            g_last_exit_code = 1;
+        } else if (is_background) {
+            if (jobs_add(pgid, cmd_count, input) < 0) {
+                kill(-pgid, SIGTERM);
+                for (int i = 0; i < cmd_count; ++i) waitpid(pids[i], NULL, 0);
+                g_last_exit_code = 1;
+            } else g_last_exit_code = 0;
         } else {
             if (isatty(STDIN_FILENO)) tcsetpgrp(STDIN_FILENO, pgid);
 
@@ -571,7 +630,7 @@ int main(void) {
                         if (WTERMSIG(status) == SIGINT) printf("\n");
                     } else if (WIFSTOPPED(status)) {
                         g_last_exit_code = 128 + WSTOPSIG(status);
-                        jobs_add(pids[i], pgid, input);
+                        jobs_add(pgid, cmd_count, input);
                     }
                 }
             }

@@ -32,7 +32,7 @@ void jobs_cleanup(void);
 
 /* Register a new background job.
  * Returns the assigned job ID (>= 1), or -1 if the table is full. */
-int  jobs_add(pid_t pid, pid_t pgid, const char *command);
+int  jobs_add(pid_t pgid, int process_count, const char *command);
 
 /* Print the current job table; reaps finished jobs in the process. */
 void jobs_list(void);
