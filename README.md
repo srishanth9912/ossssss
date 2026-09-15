@@ -1,324 +1,757 @@
-# 🎓 StudentOS
+# StudentOS
 
-[![C11](https://img.shields.io/badge/Language-C11-blue.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20WSL-orange.svg)](https://ubuntu.com/wsl)
-[![Standard](https://img.shields.io/badge/Standard-POSIX.1--2008-green.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/)
-[![Curriculum](https://img.shields.io/badge/Curriculum-ShellForge%2012--Week-purple.svg)](#-shellforge-curriculum-roadmap)
-[![License](https://img.shields.io/badge/License-MIT%20%2F%20Educational-lightgrey.svg)](#-license)
+**StudentOS** is a full Unix-style interactive shell built from scratch in C11. It is a 12-week operating systems learning project that implements real low-level POSIX concepts — process creation, inter-process communication through pipes, file descriptor redirection, signal handling, and multithreaded background job control — alongside a suite of student productivity tools built directly into the shell.
 
-**StudentOS** is a compact Unix-style shell and Operating Systems learning lab written in **C11**. It combines a real POSIX interactive shell (supporting pipelines, file redirections, signal isolation, and background job control) with an integrated suite of student productivity tools and OS kernel diagnostic experiments.
+The project is designed to be small, readable, and educational. Every feature in StudentOS corresponds to a specific operating systems concept taught in the course, implemented using the actual system calls that a production shell would use.
+
+> **Platform:** Linux or WSL (Windows Subsystem for Linux). The shell requires a POSIX-compatible environment and will not run natively on Windows Command Prompt or PowerShell.
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [✨ At a Glance (For Beginners)](#-at-a-glance-for-beginners)
-- [🎯 Core Features & Use Cases](#-core-features--use-cases)
-- [🗺️ Project Architecture & Map](#️-project-architecture--map)
-- [📚 ShellForge Curriculum Roadmap](#-shellforge-curriculum-roadmap)
-- [⚡ Quick Start Guide](#-quick-start-guide)
-- [📖 Complete Command Reference](#-complete-command-reference)
-- [🔬 Operating Systems Concepts in Action](#-operating-systems-concepts-in-action)
-- [🧪 Testing & Quality Assurance](#-testing--quality-assurance)
-- [🛡️ Supported Syntax & Educational Scope](#-supported-syntax--educational-scope)
-- [📄 License](#-license)
+1. [What is StudentOS and Why it Exists](#1-what-is-studentos-and-why-it-exists)
+2. [What the Project Covers](#2-what-the-project-covers)
+3. [Project Structure](#3-project-structure)
+4. [How the Shell Works Internally](#4-how-the-shell-works-internally)
+5. [ShellForge Curriculum — Week by Week](#5-shellforge-curriculum--week-by-week)
+6. [Quick Start](#6-quick-start)
+7. [Shell Built-in Commands](#7-shell-built-in-commands)
+8. [Student Productivity Tools](#8-student-productivity-tools)
+9. [OS Inspection and Developer Tools](#9-os-inspection-and-developer-tools)
+10. [Pipelines, Redirection, and Job Control](#10-pipelines-redirection-and-job-control)
+11. [Data Storage](#11-data-storage)
+12. [Testing](#12-testing)
+13. [What the Shell Does Not Support](#13-what-the-shell-does-not-support)
+14. [Development Guidelines](#14-development-guidelines)
 
 ---
 
-## ✨ At a Glance (For Beginners)
+## 1. What is StudentOS and Why it Exists
 
-### What is StudentOS?
-When you open a terminal on Linux or macOS, you are using a shell (like `bash` or `zsh`) that reads your commands, creates child processes (`fork()`), runs programs (`execvp()`), and connects them with pipes (`pipe()`). 
+When you open a terminal on any Linux or macOS machine and type a command like `ls | grep .c`, the shell you are using — bash, zsh, or sh — does the following:
 
-**StudentOS is that exact same system built from scratch in C**, without any third-party frameworks. It is designed to be small, clean, readable, and educational.
+1. Reads the line you typed.
+2. Breaks it into tokens (words and operators).
+3. Creates a child process using `fork()`.
+4. Connects the child's stdin/stdout to a pipe using `dup2()`.
+5. Replaces the child's process image with the program using `execvp()`.
+6. Waits for the child to finish using `waitpid()`.
 
-```text
-=================================
-        Welcome to StudentOS
-   A Student-Centric Unix Shell
-=================================
-StudentOS > echo "Hello Operating Systems" | tr a-z A-Z
-HELLO OPERATING SYSTEMS
-StudentOS > calc (25 + 75) * 4
-Expression : (25 + 75) * 4
-Result     : 400
-StudentOS > memstat
-Virtual Memory Statistics (memstat)
---------------------------------------------------
-Total Physical Memory :    8192000 kB (8000.00 MB)
-Used Physical Memory  :    3150000 kB ( 38.45%)
---------------------------------------------------
-StudentOS > exit
+All of that happens invisibly, every time you press Enter. StudentOS makes the entire process **visible in code** by building that same system from scratch in clean, commented C11.
+
+The goal is not to replace bash. The goal is to understand exactly what bash is doing underneath.
+
+---
+
+## 2. What the Project Covers
+
+| Area | OS Concept | Implementation |
+|------|-----------|---------------|
+| Memory management | Dynamic strings, resizable arrays, heap allocation and ownership | `vector.c`, `student_string.c` |
+| Process control | `fork()`, `execvp()`, `waitpid()`, exit status codes | `main.c` |
+| Parsing | Tokenizer, quoted arguments, multi-stage pipeline construction | `main.c` |
+| File descriptors | `open()`, `dup2()`, stdin/stdout/stderr redirection | `main.c` |
+| Signals | Parent shell ignores SIGINT/SIGTSTP; children restore defaults | `signals.c` |
+| Concurrency | POSIX threads, mutex-protected shared job table | `jobs.c` |
+| Job control | Process groups, `jobs`, `fg`, `bg`, background pipelines | `jobs.c` |
+| Kernel introspection | Reading `/proc/meminfo`, calling `uname()` | `student_commands.c` |
+| Persistent storage | File-based notes, assignment, and timetable databases | `student_commands.c`, `history.c` |
+
+---
+
+## 3. Project Structure
+
+```
+ossssss/
+│
+├── Makefile                    Build system — compile, test, clean, strict-check
+├── README.md                   This file
+├── notes.txt                   Local developer notes
+│
+├── include/                    Public header files (API declarations)
+│   ├── vector.h                StringVector — resizable array of heap-allocated C strings
+│   ├── student_string.h        DynamicString — auto-growing character buffer
+│   ├── jobs.h                  Job states, job table constants, background job API
+│   ├── signals.h               Signal setup API for parent shell and child processes
+│   ├── history.h               Command history persistence API
+│   └── student_commands.h      Student utility dispatcher (is_student_command, handle_student_command)
+│
+├── src/                        All C11 source files
+│   ├── main.c                  The REPL loop, tokenizer, parser, pipeline engine, built-in execution
+│   ├── vector.c                StringVector — malloc, realloc, push, free
+│   ├── student_string.c        DynamicString — create, append character/string, free
+│   ├── jobs.c                  Background job table, pthread monitor, fg/bg/jobs implementation
+│   ├── signals.c               sigaction setup — parent ignores, child resets to SIG_DFL
+│   ├── history.c               Append/list/clear command history at ~/.studentos/history.db
+│   └── student_commands.c      notes, assignment, timetable, calc, compile/run/test,
+│                                 files, memstat, sysinfo, threads
+│
+├── tests/
+│   ├── test_shell.sh           Automated bash test harness (14 regression tests)
+│   └── hello.c                 Small C program used as a fixture in compile/run/test tests
+│
+└── data/                       Local fallback directory for database files when $HOME is unavailable
+    ├── history.db
+    ├── notes.db
+    ├── assignments.db
+    └── timetable.db
+```
+
+### What each file actually does
+
+**`src/main.c`** — This is the heart of the shell. It contains:
+- The REPL (read-eval-print loop) that repeatedly prints the `StudentOS >` prompt, reads a line, processes it, and loops.
+- `tokenize_input()` — a character-by-character scanner that correctly handles single and double quotes, whitespace, and multi-character operators like `>>` and `2>&1`.
+- The pipeline parser that builds an array of `ParsedCommand` structures, one per stage.
+- `setup_redirection()` — opens files and rewires stdin/stdout/stderr using `dup2()`.
+- The `fork()` loop that spawns each stage of a pipeline, connects them with `pipe()` file descriptors, and manages process groups.
+- Foreground and background execution paths and exit code tracking via `g_last_exit_code`.
+
+**`src/vector.c`** — Implements `StringVector`, a dynamically growing array of `char*` strings. Used by the tokenizer to accumulate tokens. Doubles in capacity when full. Every string pushed into the vector is owned by the vector and freed when `vector_free()` is called.
+
+**`src/student_string.c`** — Implements `DynamicString`, a growable character buffer. Used during tokenization to accumulate characters one at a time while scanning an input line. Doubles in capacity using `realloc()` when needed.
+
+**`src/jobs.c`** — Manages background job control. Contains:
+- A static job table of up to 64 jobs, each identified by process group ID.
+- A background `pthread` monitor thread that calls `waitpid(WNOHANG)` every 100ms to reap finished background pipelines without blocking the shell.
+- `pthread_mutex_t` protection on all reads and writes to the shared job table.
+- `jobs_fg()` — transfers terminal control to a job using `tcsetpgrp()`, waits for it to finish, then reclaims the terminal.
+- `jobs_bg()` — sends `SIGCONT` to a stopped process group.
+
+**`src/signals.c`** — Sets up signal handling for the parent shell using `sigaction()`. The parent ignores `SIGINT`, `SIGTSTP`, `SIGQUIT`, `SIGTTOU`, and `SIGTTIN` so `Ctrl+C` and `Ctrl+Z` only affect child processes. Before each child calls `execvp()`, `signals_reset_child()` restores all handlers to `SIG_DFL` so the child behaves normally.
+
+**`src/history.c`** — Appends every executed command line to `~/.studentos/history.db` using plain text file I/O. `history list` reads and numbers each line. `history clear` truncates the file.
+
+**`src/student_commands.c`** — All student-facing utilities are implemented here and dispatched through `handle_student_command()`. Each utility is a self-contained static function.
+
+---
+
+## 4. How the Shell Works Internally
+
+Every line you type follows this path through the code:
+
+```
+User types a line and presses Enter
+         │
+         ▼
+  history_add(input)         — saved to ~/.studentos/history.db
+         │
+         ▼
+  tokenize_input(input)      — produces a StringVector of tokens
+                               handles: "quoted text", 'quotes', |, <, >, >>, 2>, 2>&1, &
+         │
+         ▼
+  Parse tokens               — detects pipeline stages separated by |
+                               attaches redirection files to each ParsedCommand
+                               detects trailing & for background execution
+         │
+         ├─── Is it a single built-in or student command (no pipeline, no &)?
+         │         │
+         │         ▼
+         │    Run directly in the parent process
+         │    Save stdout/stdin/stderr with dup(), apply redirection with dup2(),
+         │    execute the command, restore the saved file descriptors
+         │
+         └─── Is it a pipeline or external command?
+                   │
+                   ▼
+              Allocate pipe file descriptor pairs: pipe() × (stage_count − 1)
+                   │
+                   ▼
+              for each stage: fork()
+                   Child:  setpgid(0, pgid)         — join the process group
+                           dup2() pipe ends          — wire stdin/stdout between stages
+                           close all pipe FDs        — avoid descriptor leaks
+                           setup_redirection()       — apply < > >> 2> 2>&1
+                           signals_reset_child()     — restore SIG_DFL
+                           execvp()                  — replace with the actual program
+                   Parent: setpgid(pid, pgid)        — set group from parent side too
+                   │
+                   ▼
+              Close all pipe ends in the parent
+                   │
+                   ├─── Foreground:
+                   │         tcsetpgrp(STDIN, pgid)  — give terminal to child group
+                   │         waitpid() for each stage
+                   │         tcsetpgrp(STDIN, shell) — reclaim terminal
+                   │
+                   └─── Background (&):
+                             jobs_add(pgid, stage_count, command)
+                             pthread monitor reaps completion asynchronously
 ```
 
 ---
 
-## 🎯 Core Features & Use Cases
+## 5. ShellForge Curriculum — Week by Week
 
-### 1. 🎓 Student Productivity Suite
-Organize your academic life without leaving your terminal. All records persist across sessions in `~/.studentos/`.
-- **Notes (`notes`)**: Interactive or one-line study notes (`notes add "Study pipes"`, `notes list`, `notes clear`).
-- **Assignment Tracker (`assignment`)**: Track deadlines and completion status (`assignment add "Lab 3" --due 30-09-2026`, `assignment done 1`).
-- **Weekly Timetable (`timetable`)**: Manage your lecture schedule by day, time, and subject.
+StudentOS is built following the 12-week ShellForge Operating Systems curriculum. Each week's milestone is directly reflected in the codebase.
 
-### 2. 🧮 Built-in Math & C Development Toolchain
-- **Recursive-Descent Calculator (`calc` / `calculator`)**: Evaluates arithmetic expressions with parentheses and operator precedence (`+`, `-`, `*`, `/`) and zero-division protection.
-- **In-Shell C Compiler & Runner (`compile`, `run`, `test`)**: Direct, safe `gcc` driver via `fork()`/`execvp()` without shell-injection risk. `test file.c` compiles to a temporary binary, executes it, and cleans it up in one step.
-
-### 3. ⚙️ Operating Systems Lab & Kernel Introspection
-- **Virtual Memory Inspector (`memstat`)**: Directly parses the Linux `/proc/meminfo` virtual filesystem to compute physical memory usage, cache, and swap statistics.
-- **System Information (`sysinfo`)**: Queries the Linux kernel using the POSIX `uname()` system call.
-- **Multithreading & Concurrency Demo (`threads [N]`)**: Spawns $N$ concurrent POSIX worker threads with `pthread_mutex_t` synchronization to demonstrate race condition prevention.
-
-### 4. 🐚 Full POSIX Unix Shell Engine
-- **Arbitrary Pipelines (`|`)**: Chain output and input across multiple commands (`cat file | grep pattern | wc -l`).
-- **I/O Redirections**: File input (`<`), output overwrite (`>`), output append (`>>`), error redirection (`2>`), and stderr-to-stdout merging (`2>&1`).
-- **Process Group Job Control (`&`, `jobs`, `fg`, `bg`)**: Run background jobs and multi-process pipelines. Uses an asynchronous `pthread` monitor to reap completed processes non-blockingly.
-- **Signal Protection**: The parent shell safely ignores `Ctrl+C` (`SIGINT`) and `Ctrl+Z` (`SIGTSTP`), while child processes restore default signal dispositions.
-- **Exit Code Tracking (`$?`)**: Inspect the exit status of the previous foreground process via `echo $?`.
+| Week | Chapter | Module | Milestone | Files Involved |
+|------|---------|--------|-----------|----------------|
+| 1 | The Machine Beneath the Prompt | M1·CO1 | Working REPL loop, repo, Makefile | `main.c`, `Makefile` |
+| 2 | The C Toolchain & Memory Model | M1·CO1 | `DynamicString` and `StringVector` types | `student_string.c`, `vector.c` |
+| 3 | The Parser | M2·CO2 | Tokenizer + multi-stage pipeline parser | `main.c` — `tokenize_input()` |
+| 4 | Processes & Process Control | M2·CO2 | `fork()`, `execvp()`, `waitpid()` for one command | `main.c`, `student_commands.c` |
+| 5 | fork / exec / wait in Anger | M3·CO3 | PATH lookup, built-ins, exit codes via `$?` | `main.c` — `g_last_exit_code` |
+| 6 | Signals & Async Control | M3·CO3 | `SIGINT`/`SIGTSTP` isolation, `SIGCHLD` with `SA_RESTART` | `signals.c` |
+| 7 | Pipes & Plumbing | M3·CO3 | Arbitrary-length pipelines with `pipe()` and `dup2()` | `main.c` — pipeline execution section |
+| 8 | Virtual Memory | M4·CO4 | Valgrind-clean memory; `memstat` via `/proc/meminfo` | `student_commands.c` |
+| 9 | Redirection & the File Abstraction | M5·CO5 | Full `<`, `>`, `>>`, `2>`, `2>&1` redirection | `main.c` — `setup_redirection()` |
+| 10 | Concurrency I — Mutual Exclusion | M6·CO6 | Background `pthread` monitor + mutex-protected job table | `jobs.c` |
+| 11 | Concurrency II — Deadlock & Jobs | M6·CO6 | Complete `jobs`, `fg`, `bg`, `&` with process groups | `jobs.c` |
+| 12 | Polish, Hosting & Ascent | All | Regression test suite, documentation, hosted on GitHub | `tests/test_shell.sh`, `README.md` |
 
 ---
 
-## 🗺️ Project Architecture & Map
+## 6. Quick Start
 
-### How a Command Flows Through StudentOS
+### Requirements
 
-```text
- User Input String
-        |
-        v
- +--------------+
- | Tokenizer    |  Splits input respecting quotes ("...", '...'),
- | (main.c)     |  whitespace, and operators (|, <, >, >>, 2>, 2>&1, &)
- +-------+------+
-         |
-         v
- +--------------+
- | Parser       |  Constructs ParsedCommand structures for each stage
- | (main.c)     |  and binds input/output redirection files
- +-------+------+
-         |
-         +-----------------------------+
-         |                             |
-  Single Built-in / Student Tool?      Multi-Stage Pipeline or External?
-         |                             |
-         v                             v
- +---------------+             +---------------+
- | Parent Exec   |             | Pipe Setup    |  Allocates 2 * (N - 1) FDs
- | (save/restore |             +-------+-------+
- |  STDIN/OUT)   |                     |
- +---------------+                     v
-                               +---------------+
-                               | fork() Stages |  setpgid() creates process group
-                               +-------+-------+  signals_reset_child() restores SIG_DFL
-                                       |          execvp() replaces child images
-                                       v
-                     +-----------------+-----------------+
-                     |                                   |
-              Foreground (& not set)              Background (& set)
-                     |                                   |
-                     v                                   v
-             +---------------+                   +---------------+
-             | tcsetpgrp()   |                   | jobs_add()    |
-             | waitpid() loop|                   | Monitor Thread|
-             | reclaim tty   |                   | reaps (WNOHANG|
-             +---------------+                   +---------------+
-```
+You need a Linux system or WSL. The following tools must be installed:
 
----
+- GCC or Clang with C11 support
+- GNU Make
+- Bash (for running the test suite)
+- POSIX threads library (comes with GCC on Linux)
+- Valgrind (optional, for memory checking)
 
-### 📂 Directory & File Map
+On Ubuntu, Debian, or WSL:
 
-```text
-.
-├── Makefile                     # Build system with all, clean, run, test, and check targets
-├── README.md                    # Project documentation & user guide
-├── notes.txt                    # Local scratchpad notes
-│
-├── include/                     # Public C headers shared across modules
-│   ├── vector.h                 # Resizable dynamic string array (StringVector)
-│   ├── student_string.h         # Auto-expanding dynamic string buffer (DynamicString)
-│   ├── jobs.h                   # Job table, states, process groups, and monitor API
-│   ├── signals.h                # POSIX signal configuration (parent ignore / child reset)
-│   ├── history.h                # Persistent command history API
-│   └── student_commands.h       # Student utilities and OS lab dispatcher API
-│
-├── src/                         # Core C11 source implementations
-│   ├── main.c                   # Shell REPL, tokenizer, parser, pipeline execution engine
-│   ├── vector.c                 # StringVector memory management (malloc, realloc, free)
-│   ├── student_string.c         # DynamicString buffer expansion and appending
-│   ├── jobs.c                   # Threaded background job monitor & process-group job control
-│   ├── signals.c                # Signal dispositions (sigaction, SA_RESTART)
-│   ├── history.c                # History logger (~/.studentos/history.db)
-│   └── student_commands.c       # Notes, assignments, timetable, calc, memstat, sysinfo, threads
-│
-├── tests/                       # Automated regression testing
-│   ├── test_shell.sh            # 14-point automated test harness in Bash
-│   └── hello.c                  # Fixture program used for compiler testing
-│
-└── data/                        # Local fallback storage directory
-```
-
----
-
-## 📚 ShellForge Curriculum Roadmap
-
-StudentOS is structured in 100% compliance with the **12-Week ShellForge OS Curriculum**:
-
-| Week | Module · CO | Chapter Title | ShellForge Milestone | Implemented In |
-| :---: | :---: | :--- | :--- | :--- |
-| **1** | `M1·CO1` | The Machine Beneath the Prompt | REPL loop, repo, Makefile | [src/main.c](src/main.c), [Makefile](Makefile) |
-| **2** | `M1·CO1` | The C Toolchain & Memory Model | Dynamic string/vector types | [src/vector.c](src/vector.c), [src/student_string.c](src/student_string.c) |
-| **3** | `M2·CO2` | The Parser | Tokenizer + pipeline AST | [src/main.c](src/main.c) (`tokenize_input`) |
-| **4** | `M2·CO2` | Processes & Process Control | Run one command (`fork`/`exec`/`wait`) | [src/main.c](src/main.c), [src/student_commands.c](src/student_commands.c) |
-| **5** | `M3·CO3` | fork / exec / wait in Anger | PATH lookup, built-ins, exit codes (`$?`) | [src/main.c](src/main.c) (`g_last_exit_code`) |
-| **6** | `M3·CO3` | Signals & Async Control | Ctrl-C/Z isolation, `SIGCHLD` handling | [src/signals.c](src/signals.c) (`sigaction`) |
-| **7** | `M3·CO3` | Pipes & Plumbing | Arbitrary-length multi-stage pipelines | [src/main.c](src/main.c) (`pipefds` & `dup2`) |
-| **8** | `M4·CO4` | Virtual Memory | Valgrind-clean allocations; `memstat` | [src/student_commands.c](src/student_commands.c) (`/proc/meminfo`) |
-| **9** | `M5·CO5` | Redirection & File Abstraction | Full I/O redirection (`<`, `>`, `>>`, `2>`, `2>&1`) | [src/main.c](src/main.c) (`setup_redirection`) |
-| **10** | `M6·CO6` | Concurrency I — Mutual Exclusion | Threaded job monitor + mutex container | [src/jobs.c](src/jobs.c) (`pthread_mutex_t`) |
-| **11** | `M6·CO6` | Concurrency II — Deadlock & Jobs | Complete job control (`jobs`, `fg`, `bg`, `&`) | [src/jobs.c](src/jobs.c) (`tcsetpgrp`, `kill`) |
-| **12** | `All` | Polish, Hosting & Ascent | Automated test suite, documentation, repo | [tests/test_shell.sh](tests/test_shell.sh), [README.md](README.md) |
-
----
-
-## ⚡ Quick Start Guide
-
-### 1. Requirements
-StudentOS requires a POSIX environment:
-- **Linux** (Ubuntu, Debian, Fedora, Arch, etc.) or **WSL (Windows Subsystem for Linux)**.
-- `gcc` or `clang` (C11 support)
-- GNU `make`
-- `bash` (for running the automated test suite)
-- `valgrind` (optional, for memory checking)
-
-On Ubuntu/Debian/WSL:
 ```bash
 sudo apt update
 sudo apt install build-essential valgrind
 ```
 
-### 2. Clone & Build
+### Build
+
 ```bash
 git clone https://github.com/srishanth9912/ossssss.git
 cd ossssss
 make
 ```
 
-### 3. Launch StudentOS
+This produces the `studentos` executable and places `.o` object files in `obj/`.
+
+### Run
+
 ```bash
 ./studentos
 ```
 
----
+You will see:
 
-## 📖 Complete Command Reference
+```
+=================================
+        Welcome to StudentOS
+   A Student-Centric Unix Shell
+=================================
+StudentOS >
+```
 
-### Shell Built-ins
-| Command | Syntax | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `cd` | `cd [dir]` | Change working directory (defaults to `$HOME`) | `cd /tmp` |
-| `pwd` | `pwd` | Print current working directory | `pwd` |
-| `echo` | `echo [text...]` | Print text; supports `$?` for previous exit code | `echo "Status:" $?` |
-| `history` | `history [clear]` | View past commands or clear the history file | `history` |
-| `jobs` | `jobs` | List active, stopped, and completed background jobs | `jobs` |
-| `fg` | `fg <id>` | Bring a background or stopped job to the foreground | `fg 1` |
-| `bg` | `bg <id>` | Resume a stopped job in the background | `bg 1` |
-| `help` | `help [cmd]` | Display the interactive help screen | `help notes` |
-| `exit` | `exit [code]` | Clean up jobs and exit the shell | `exit 0` |
+### First Commands to Try
 
-### Student Productivity Tools
-| Command | Mode | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `notes add` | Interactive | Prompts step-by-step for the note text | Type `notes add` & enter note |
-| `notes add <text>` | One-line | Directly appends a note to database | `notes add "Exam on Friday"` |
-| `notes list` | Display | Prints all saved notes | `notes list` |
-| `notes clear` | Reset | Deletes all saved notes | `notes clear` |
-| `assignment add` | Interactive | Prompts for title and due date | Type `assignment add` |
-| `assignment add` | One-line | Adds assignment with optional deadline | `assignment add "OS Lab" --due 30-09-2026` |
-| `assignment list` | Display | Shows formatted table of assignments & status | `assignment list` |
-| `assignment done <id>` | Action | Marks an assignment as completed | `assignment done 1` |
-| `timetable add` | Interactive | Prompts for Day, Time, and Subject | Type `timetable add` |
-| `timetable add` | One-line | Adds a class schedule entry | `timetable add Monday 09:00 "OS"` |
-| `timetable list` | Display | Displays the weekly class schedule | `timetable list` |
+```bash
+# Basic I/O
+StudentOS > echo "Hello from StudentOS"
+StudentOS > pwd
+StudentOS > echo $?
 
-### Math & System Tools
-| Command | Description | Example |
-| :--- | :--- | :--- |
-| `calc <expr>` | Evaluates math expressions (`+`, `-`, `*`, `/`, `( )`) | `calc (50 + 25) * 2` |
-| `compile <file.c> [bin]` | Compiles a C source file using GCC | `compile tests/hello.c hello` |
-| `run <bin> [args...]` | Executes a compiled program directly | `run ./hello` |
-| `test <file.c>` | Compiles, runs, and deletes a temporary C test binary | `test tests/hello.c` |
-| `files list [path]` | Lists directory contents with directory markers | `files list .` |
-| `files create <file>` | Creates a new empty file | `files create new.txt` |
-| `files read <file>` | Prints file contents to the terminal | `files read new.txt` |
-| `files delete <file>` | Deletes a file | `files delete new.txt` |
-| `files info <file>` | Displays file size in bytes and file type | `files info README.md` |
-| `memstat` | Displays physical RAM, available memory, and swap usage | `memstat` |
-| `sysinfo` | Displays OS name, release, machine architecture | `sysinfo` |
-| `threads [N]` | Demonstrates mutex synchronization across $N$ worker threads | `threads 4` |
+# Pipelines
+StudentOS > echo "hello world" | tr a-z A-Z
+StudentOS > cat /etc/passwd | cut -d: -f1 | sort | head -5
 
----
+# Redirection
+StudentOS > echo "log entry" > log.txt
+StudentOS > echo "second entry" >> log.txt
+StudentOS > cat < log.txt
 
-## 🔬 Operating Systems Concepts in Action
+# Student tools
+StudentOS > notes add "Study process scheduling"
+StudentOS > notes list
+StudentOS > calc (20 + 5) * 4
+StudentOS > memstat
 
-| OS Concept | Low-Level POSIX System Call | How StudentOS Uses It |
-| :--- | :--- | :--- |
-| **Process Creation** | `fork()` | Clones the shell process to execute new commands. |
-| **Program Execution** | `execvp()` | Replaces the child process memory image with the target binary. |
-| **Process Waiting** | `waitpid()` | Reaps child processes and retrieves their exit codes. |
-| **Inter-Process Comm.** | `pipe()` | Creates unidirectional data channels connecting pipeline stages. |
-| **File Redirection** | `dup2()`, `open()` | Duplicates file descriptors to standard streams (`STDIN`, `STDOUT`, `STDERR`). |
-| **Process Groups** | `setpgid()`, `tcsetpgrp()` | Groups pipeline children together to manage terminal foreground ownership. |
-| **Signal Handling** | `sigaction()` | Disables interrupts on the parent shell and restores defaults in children. |
-| **Multithreading** | `pthread_create()`, `pthread_join()` | Runs the asynchronous job monitor thread and concurrency demo. |
-| **Mutual Exclusion** | `pthread_mutex_lock()`, `pthread_mutex_unlock()` | Protects shared data (the job table and thread counter) against race conditions. |
-| **Kernel Introspection** | `fopen("/proc/meminfo")`, `uname()` | Reads Linux virtual filesystem metrics and system kernel parameters. |
+# Exit
+StudentOS > exit
+```
+
+### Makefile Targets
+
+| Target | Command | What it does |
+|--------|---------|-------------|
+| Default build | `make` | Compiles all sources into `studentos` |
+| Run shell | `make run` | Builds and immediately launches the shell |
+| Run tests | `make test` | Runs the automated regression suite |
+| Strict build | `make check` | Rebuilds with `-Werror` (warnings become errors) |
+| Clean | `make clean` | Removes `studentos`, `obj/`, and temp files |
 
 ---
 
-## 🧪 Testing & Quality Assurance
+## 7. Shell Built-in Commands
 
-### Run the Automated Test Suite
-StudentOS includes an automated test harness covering all built-ins, pipeline stages, redirection operators, student utilities, and job control:
+These commands are handled directly inside the shell process. They do not `fork()` a child.
+
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `cd` | `cd [directory]` | Change the current working directory. Without an argument, goes to `$HOME`. |
+| `pwd` | `pwd` | Print the current working directory path. |
+| `echo` | `echo [text ...]` | Print arguments separated by spaces. `echo $?` prints the last exit code. |
+| `history` | `history` or `history clear` | List all saved commands, or clear the history file. |
+| `jobs` | `jobs` | Display the background job table with ID, PGID, status, and command. |
+| `fg` | `fg <job-id>` | Bring a background or stopped job to the foreground. |
+| `bg` | `bg <job-id>` | Resume a stopped job and continue it in the background. |
+| `help` | `help` or `help <command>` | Print the general help screen, or detailed help for a specific command. |
+| `exit` | `exit [code]` or `quit [code]` | Terminate the shell, cleaning up the job monitor thread first. |
+
+---
+
+## 8. Student Productivity Tools
+
+All tools persist their data in `~/.studentos/` across sessions. If `$HOME` is not available, data falls back to the `data/` directory in the project folder.
+
+---
+
+### Notes — `notes`
+
+Take quick study notes and retrieve them later.
+
+**Interactive mode** — prompts you for input:
+```
+StudentOS > notes add
+Usage: notes add [text] | list | clear
+Note : Study process scheduling for the exam
+Note saved.
+```
+
+**One-line mode** — type everything in a single command:
+```
+StudentOS > notes add "Revise pipe() and dup2() before the viva"
+Note saved.
+```
+
+**List all notes:**
+```
+StudentOS > notes list
+
+Saved Notes
+--------------------------------------------------
+ 1. Study process scheduling for the exam
+ 2. Revise pipe() and dup2() before the viva
+--------------------------------------------------
+```
+
+**Clear all notes:**
+```
+StudentOS > notes clear
+All notes cleared.
+```
+
+---
+
+### Assignments — `assignment`
+
+Track your homework, lab reports, and project deadlines.
+
+**Interactive mode:**
+```
+StudentOS > assignment add
+Title    : OS Shell Project Report
+Due Date : 30-09-2026
+Assignment added: [1] OS Shell Project Report (Due: 30-09-2026)
+```
+
+**One-line mode:**
+```
+StudentOS > assignment add "OS Shell Project Report" --due 30-09-2026
+Assignment added: [1] OS Shell Project Report (Due: 30-09-2026)
+```
+
+**List all assignments:**
+```
+StudentOS > assignment list
+
+Assignments
+----------------------------------------------------------------------
+ID   Title                            Due Date         Status
+----------------------------------------------------------------------
+1    OS Shell Project Report          30-09-2026       Pending
+----------------------------------------------------------------------
+```
+
+**Mark an assignment as done:**
+```
+StudentOS > assignment done 1
+Assignment #1 marked as done.
+```
+
+**Clear all assignments:**
+```
+StudentOS > assignment clear
+All assignments cleared.
+```
+
+---
+
+### Timetable — `timetable`
+
+Manage your weekly class schedule.
+
+**Interactive mode:**
+```
+StudentOS > timetable add
+Day     : Monday
+Time    : 09:00
+Subject : Operating Systems
+Class added: Monday at 09:00 - Operating Systems
+```
+
+**One-line mode:**
+```
+StudentOS > timetable add Monday 09:00 "Operating Systems"
+Class added: Monday at 09:00 - Operating Systems
+```
+
+**List the timetable:**
+```
+StudentOS > timetable list
+
+Weekly Class Timetable
+--------------------------------------------------
+Day          Time       Subject
+--------------------------------------------------
+Monday       09:00      Operating Systems
+--------------------------------------------------
+```
+
+**Clear the timetable:**
+```
+StudentOS > timetable clear
+Timetable cleared.
+```
+
+---
+
+## 9. OS Inspection and Developer Tools
+
+---
+
+### Calculator — `calc` or `calculator`
+
+A recursive-descent expression evaluator that correctly handles operator precedence and parentheses. Supports `+`, `-`, `*`, `/`, unary negation, and nested parentheses. Division by zero is detected and reported.
+
+```
+StudentOS > calc (20 + 5) * 4
+Expression : (20 + 5) * 4
+Result     : 100
+
+StudentOS > calculator 100 / 8
+Expression : 100 / 8
+Result     : 12.5
+
+StudentOS > calc -5 * (3 + 2)
+Expression : -5 * (3 + 2)
+Result     : -25
+```
+
+---
+
+### Compiler and Runner — `compile`, `run`, `test`
+
+These commands drive GCC directly using `fork()` and `execvp()`, so there is no shell injection and arguments are passed literally.
+
+**Compile a C file:**
+```
+StudentOS > compile tests/hello.c hello
+Compiling tests/hello.c -> hello ...
+Compilation successful: ./hello
+```
+
+**Run a binary:**
+```
+StudentOS > run ./hello
+Hello from StudentOS test program!
+```
+
+**One-step compile, run, and clean up** (the binary is deleted after execution):
+```
+StudentOS > test tests/hello.c
+Hello from StudentOS test program!
+
+Test process exited with status 0
+```
+
+---
+
+### File Manager — `files`
+
+Perform common file operations from inside the shell.
+
+```
+StudentOS > files list .
+StudentOS > files list src/
+
+StudentOS > files create output.txt
+Created empty file: output.txt
+
+StudentOS > files read output.txt
+
+StudentOS > files info README.md
+
+File Information: README.md
+--------------------------------------------------
+Size : 17408 bytes
+Type : File
+--------------------------------------------------
+
+StudentOS > files delete output.txt
+Deleted: output.txt
+```
+
+---
+
+### Virtual Memory Statistics — `memstat`
+
+Reads and parses `/proc/meminfo` directly to report memory usage. This only works on Linux systems.
+
+```
+StudentOS > memstat
+
+Virtual Memory Statistics (memstat)
+--------------------------------------------------
+Total Physical Memory :   16384000 kB (16000.00 MB)
+Used Physical Memory  :    6250000 kB ( 38.15%)
+Free Physical Memory  :    4200000 kB
+Available Memory      :   10134000 kB
+Buffers / Cache       :     512000 kB / 5422000 kB
+Swap Total / Free     :    4194304 kB / 4194304 kB
+--------------------------------------------------
+```
+
+---
+
+### System Information — `sysinfo`
+
+Uses the POSIX `uname()` system call to display kernel and hardware details.
+
+```
+StudentOS > sysinfo
+
+StudentOS System Information
+--------------------------------------------------
+OS Name    : Linux
+Node Name  : my-machine
+Release    : 5.15.0-91-generic
+Version    : #101-Ubuntu SMP Tue Nov 14 13:30:08 UTC 2023
+Machine    : x86_64
+--------------------------------------------------
+```
+
+---
+
+### Thread Concurrency Demo — `threads`
+
+Spawns N POSIX worker threads (default 4, max 16). Each thread increments a shared counter 100,000 times protected by a `pthread_mutex_t`. This demonstrates that mutex locking prevents race conditions.
+
+```
+StudentOS > threads 4
+Spawning 4 threads, each incrementing counter 100000 times...
+Expected count: 400000
+Actual count  : 400000
+Result: Mutex synchronization successful (no race condition).
+```
+
+---
+
+## 10. Pipelines, Redirection, and Job Control
+
+---
+
+### Pipelines
+
+Use `|` to connect commands. The stdout of the left command becomes the stdin of the right command. Any number of stages are supported.
+
+```bash
+# Two-stage pipeline
+cat /etc/passwd | grep root
+
+# Three-stage pipeline
+cat /etc/passwd | cut -d: -f1 | sort
+
+# Four-stage pipeline
+echo "hello world from studentos" | tr ' ' '\n' | sort | uniq
+```
+
+---
+
+### Redirection
+
+| Syntax | What it does |
+|--------|-------------|
+| `command > file` | Write stdout to file (creates or truncates) |
+| `command >> file` | Append stdout to file |
+| `command < file` | Read stdin from file |
+| `command 2> file` | Write stderr to file |
+| `command 2>&1` | Merge stderr into stdout |
+
+```bash
+# Write output to a file
+echo "session log" > session.txt
+
+# Append to a file
+echo "continued log" >> session.txt
+
+# Read from a file as stdin
+wc -l < session.txt
+
+# Capture compiler errors in a file
+gcc missing_file.c 2> errors.txt
+
+# Merge stderr into the pipeline
+gcc missing_file.c 2>&1 | grep error
+```
+
+---
+
+### Background Jobs
+
+Append `&` to run a command in the background. The prompt returns immediately and you can continue using the shell. Background pipelines are tracked as a single job.
+
+```bash
+# Start a background job
+StudentOS > sleep 30 &
+[1] 12345
+
+# View all background jobs
+StudentOS > jobs
+
+Active Jobs
+----------------------------------------------------------------------
+ID   PGID     Status       Command
+----------------------------------------------------------------------
+1    12345    Running      sleep 30 &
+----------------------------------------------------------------------
+
+# Bring job 1 to the foreground
+StudentOS > fg 1
+
+# Start a background pipeline
+StudentOS > cat /dev/urandom | base64 | head -100 > random.txt &
+[2] 12380
+
+# Resume a stopped job in the background (after Ctrl+Z)
+StudentOS > bg 1
+```
+
+---
+
+### Exit Code Tracking
+
+```bash
+StudentOS > ls /nonexistent
+ls: cannot access '/nonexistent': No such file or directory
+StudentOS > echo $?
+2
+
+StudentOS > echo "hello"
+hello
+StudentOS > echo $?
+0
+```
+
+---
+
+## 11. Data Storage
+
+StudentOS stores all persistent data in `~/.studentos/`. The directory is created automatically on first use.
+
+```
+~/.studentos/
+├── history.db         One command per line, appended after each execution
+├── notes.db           One note per line
+├── assignments.db     Format: id|title|due_date|done_flag
+└── timetable.db       Format: day|time|subject
+```
+
+If the `HOME` environment variable is not set, the `data/` directory in the project folder is used as a fallback.
+
+---
+
+## 12. Testing
+
+### Automated Regression Suite
+
+Run all 14 automated tests with:
 
 ```bash
 make test
 ```
 
+The test harness (`tests/test_shell.sh`) feeds command sequences to the shell through stdin and checks stdout for expected strings. It covers:
+
+| Test | What It Verifies |
+|------|-----------------|
+| 1 | `echo` output and `$?` exit code display |
+| 2 | Output redirection (`>`) and input redirection (`<`) |
+| 3 | Append redirection (`>>`) |
+| 4 | Three-stage arbitrary pipeline |
+| 5 | Space preservation inside double quotes |
+| 6 | Parser error on unmatched quote |
+| 7 | Parser error on redirection with no file name |
+| 8 | `notes add` one-line mode and `notes list` |
+| 9 | `notes add` interactive mode |
+| 10 | `assignment add` one-line mode and `assignment list` |
+| 11 | `assignment add` interactive mode |
+| 12 | `timetable add` one-line mode and `timetable list` |
+| 13 | `timetable add` interactive mode |
+| 14 | Background job launch produces `[1]` output |
+
 ### Strict Compilation Check
-Rebuilds the entire codebase treating all warnings as errors (`-Werror`):
+
+Rebuilds the project with `-Werror` so all warnings become compile errors:
+
 ```bash
 make check
 ```
 
-### Valgrind Memory Leak Test
-Ensure all heap-allocated vectors, dynamic strings, and pipeline descriptors are freed without memory leaks:
+### Memory Leak Verification
+
 ```bash
+make
 printf 'echo hello\nexit\n' | valgrind --leak-check=full --error-exitcode=1 ./studentos
 ```
 
 ---
 
-## 🛡️ Supported Syntax & Educational Scope
+## 13. What the Shell Does Not Support
 
-StudentOS is intentionally crafted as an operating systems learning platform.
+StudentOS implements the syntax and features described above. The following are deliberately not implemented, to keep the code clear and focused on the core OS concepts:
 
-### Supported Syntax:
-- Quoted strings with spaces: `"string with spaces"` or `'literal text'`
-- Pipelines of arbitrary length: `cmd1 | cmd2 | cmd3 | cmd4`
-- Multi-mode redirection: `<`, `>`, `>>`, `2>`, `2>&1`
-- Background execution: `command &` or `cmd1 | cmd2 &`
-- Exit code inspection: `echo $?`
+- Shell variables other than `echo $?`
+- Wildcard/glob expansion such as `*.c` or `*.txt`
+- Command substitution such as `$(date)` or `` `command` ``
+- Escape sequences inside quotes such as `\n` or `\t`
+- Command separators such as `;` or `&&` or `||`
+- Shell scripting constructs such as `if`, `for`, `while`, or function definitions
+- Tab-completion or command-line editing (no `readline` dependency)
+- Full POSIX terminal job control semantics beyond what is documented above
 
-### Intentionally Excluded (To Keep Code Clean & Readable):
-- Complex shell scripting syntax (e.g., `for`, `while`, `if/else`, function definitions).
-- Shell variable expansions (other than `$?`).
-- Globbing / wildcard expansions (e.g., `*.c`).
-- Command substitutions (e.g., `$(date)`).
+The parser reports an error and discards the command when:
+- A quote is opened but never closed.
+- A redirection operator (`<`, `>`, `>>`, `2>`) has no filename following it.
+- A pipeline contains an empty stage (e.g., `cmd1 | | cmd3`).
 
 ---
 
-## 📄 License
+## 14. Development Guidelines
 
-This project is created for educational and operating-systems study purposes. Feel free to use, modify, and learn from it.
+- Keep modules small. Each `.c` file has a single responsibility.
+- Every `malloc`, `realloc`, `calloc`, and `strdup` call must check for `NULL` and clean up safely on failure.
+- Every POSIX system call must check its return value. Failures must produce a descriptive `perror()` message.
+- Add a test case to `tests/test_shell.sh` for every parser bug or execution edge case that is fixed.
+- Do not commit the `studentos` binary, object files in `obj/`, or local database files. All of these are excluded in `.gitignore`.
+- New modules must add their header to `include/` and their source to `SRC` in the `Makefile`.
+
+---
+
+*StudentOS — Built as part of the ShellForge 12-Week Operating Systems curriculum.*
